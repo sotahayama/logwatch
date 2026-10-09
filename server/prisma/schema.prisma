@@ -1,0 +1,42 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LogLevel {
+  debug
+  info
+  notice
+  error
+  fault
+}
+
+// ログを送ってくる端末。エージェント用トークンはハッシュだけを保存し、平文は登録時に一度だけ表示する。
+model Host {
+  id         Int           @id @default(autoincrement())
+  name       String        @unique
+  tokenHash  String        @unique
+  createdAt  DateTime      @default(now())
+  lastSeenAt DateTime?
+  counts     MinuteCount[]
+}
+
+// 1分 × プロセス × 重要度 のログ件数。エージェントは送信失敗時に同じ分を送り直すため、
+// 主キーで一意にして「足し込み」ではなく「置き換え」で保存する(何度届いても同じ結果になる)。
+model MinuteCount {
+  hostId     Int
+  host       Host     @relation(fields: [hostId], references: [id])
+  minute     DateTime
+  process    String
+  level      LogLevel
+  count      Int
+  receivedAt DateTime @default(now())
+
+  @@id([hostId, minute, process, level])
+  @@index([hostId, minute])
+}
