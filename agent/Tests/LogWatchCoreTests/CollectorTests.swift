@@ -132,6 +132,17 @@ struct CollectorTests {
         #expect(reader.requestedRanges.first?.0 == time("09:00:00"))
     }
 
+    @Test("初回に明示的に遡る指定は、追いつきの上限より長くても守る")
+    func explicitInitialBackfillBeyondCap() async throws {
+        let reader = FakeReader([])
+        let collector = Collector(
+            reader: reader, sink: FakeSink(), checkpoint: MemoryCheckpoint(), maxBackfill: 3600)
+
+        try await collector.runOnce(now: time("10:00:10"), initialBackfill: 6 * 3600)
+
+        #expect(reader.requestedRanges.first?.0 == time("04:00:00"))
+    }
+
     @Test("初回に遡る分数を指定できる")
     func initialBackfill() async throws {
         let reader = FakeReader([LogRecord(date: time("09:55:30"), process: "Finder", level: .notice)])

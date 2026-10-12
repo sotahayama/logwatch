@@ -37,11 +37,11 @@ public struct Collector: Sendable {
     @discardableResult
     public func runOnce(now: Date, initialBackfill: TimeInterval = 0) async throws -> [MinuteCount] {
         let end = now.addingTimeInterval(-settleDelay).minuteFloor
-        let earliest = now.addingTimeInterval(-maxBackfill).minuteFloor
-        let start = max(
-            try checkpoint.load() ?? end.addingTimeInterval(-initialBackfill).minuteFloor,
-            earliest
-        )
+        let saved = try checkpoint.load()
+        // 上限は「長く止まっていた後の追いつき」のためのもの。初回に明示的に遡る指定はそのまま守る
+        let limit = saved == nil ? max(maxBackfill, initialBackfill) : maxBackfill
+        let earliest = now.addingTimeInterval(-limit).minuteFloor
+        let start = max(saved ?? end.addingTimeInterval(-initialBackfill).minuteFloor, earliest)
         guard start < end else {
             try checkpoint.save(max(start, end))
             return []

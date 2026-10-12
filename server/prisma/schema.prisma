@@ -32,21 +32,27 @@ enum AnomalyKind {
   silence // 普段ログを出すプロセスが0件になった
 }
 
-// 受信した分ごとに検知した結果。同じ分が再送されたら検知し直して置き換える。
+enum Detector {
+  statistical // 受信時に server が判定する(直前60分の中央値との比較)
+  pca // detector/ の Python ワーカーが判定する(主成分分析)
+}
+
+// 分ごとの検知結果。同じ分を判定し直したら、その検知方法の結果を置き換える。
 model Anomaly {
   hostId     Int
   host       Host        @relation(fields: [hostId], references: [id])
+  detector   Detector    @default(statistical)
   minute     DateTime
   process    String
   level      LogLevel
   kind       AnomalyKind
   count      Int
-  baseline   Float // 直前の平常時の件数の中央値
+  baseline   Float // 平常時の件数(統計的な方法は直前の中央値、PCA は全体の状態からの予想)
   score      Float // 平常時のばらつき何個分ずれているか
   detectedAt DateTime    @default(now())
 
-  @@id([hostId, minute, process, level])
-  @@index([hostId, minute])
+  @@id([hostId, detector, minute, process, level])
+  @@index([hostId, detector, minute])
 }
 
 // 1分 × プロセス × 重要度 のログ件数。エージェントは送信失敗時に同じ分を送り直すため、

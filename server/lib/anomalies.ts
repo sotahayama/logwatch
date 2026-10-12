@@ -1,8 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { DETECTION, detectMinute } from "@/lib/detect";
-
-// 平常時の60分ぶんを確保するため、エージェントの停止を見込んで多めに遡って読む
-const LOOKBACK_MS = DETECTION.windowMinutes * 2 * 60_000;
+import { detectMinutes, LOOKBACK_MS } from "@/lib/detect";
 
 // 受信した分それぞれについて検知し直し、その分の以前の検知結果を置き換える(再送されても結果は同じ)
 export async function detectAndStore(hostId: number, minutes: Date[]) {
@@ -17,13 +14,18 @@ export async function detectAndStore(hostId: number, minutes: Date[]) {
     select: { minute: true, process: true, level: true, count: true },
   });
 
-  const found = targets.flatMap((t) => detectMinute(new Date(t), rows));
+  const found = detectMinutes(
+    targets.map((t) => new Date(t)),
+    rows,
+  );
 
   await prisma.$transaction([
     prisma.anomaly.deleteMany({
-      where: { hostId, minute: { in: targets.map((t) => new Date(t)) } },
+      where: { hostId, detector: "statistical", minute: { in: targets.map((t) => new Date(t)) } },
     }),
-    prisma.anomaly.createMany({ data: found.map((a) => ({ hostId, ...a })) }),
+    prisma.anomaly.createMany({
+      data: found.map((a) => ({ hostId, detector: "statistical" as const, ...a })),
+    }),
   ]);
   return found;
 }

@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import type { Detector } from "@/app/generated/prisma/client";
 import {
   type Dashboard,
+  DETECTORS,
   getDashboard,
+  isDetector,
   isRangeKey,
   listHosts,
   RANGES,
@@ -25,11 +28,20 @@ const LEVEL_LABEL: Record<string, string> = {
 
 const KIND_LABEL = { spike: "↑ 急増", silence: "⌀ 沈黙" } as const;
 
-type Params = { host: number; range: RangeKey; process: string | null };
+const DETECTOR_DESCRIPTION: Record<Detector, string> = {
+  pca: "端末全体の状態(作業中・放置中など)から予想される件数と比べて、大きく外れた「プロセス × 重要度」です。",
+  statistical: "直前60分の平常時と比べて、件数が大きく外れた「プロセス × 重要度」です。",
+};
+
+type Params = { host: number; range: RangeKey; process: string | null; detector: Detector };
 
 function href(params: Params, change: Partial<Params>) {
   const next = { ...params, ...change };
-  const search = new URLSearchParams({ host: String(next.host), range: next.range });
+  const search = new URLSearchParams({
+    host: String(next.host),
+    range: next.range,
+    detector: next.detector,
+  });
   if (next.process) search.set("process", next.process);
   return `/?${search}`;
 }
@@ -63,10 +75,11 @@ async function DashboardView({ searchParams }: Pick<PageProps<"/">, "searchParam
   const host = hosts.find((h) => String(h.id) === query.host) ?? hosts[0];
   const range: RangeKey = isRangeKey(query.range) ? query.range : "3h";
   const process = typeof query.process === "string" && query.process ? query.process : null;
-  const params: Params = { host: host.id, range, process };
+  const detector: Detector = isDetector(query.detector) ? query.detector : "pca";
+  const params: Params = { host: host.id, range, process, detector };
 
   const now = new Date();
-  const data = await getDashboard(host.id, range, process, now);
+  const data = await getDashboard(host.id, range, process, detector, now);
   const receiving = host.lastSeenAt && now.getTime() - host.lastSeenAt.getTime() < STALE_AFTER_MS;
 
   return (
@@ -83,6 +96,21 @@ async function DashboardView({ searchParams }: Pick<PageProps<"/">, "searchParam
                 className={`px-3 py-1 ${key === range ? "bg-ink text-page" : "bg-surface text-ink-secondary hover:bg-grid"}`}
               >
                 {RANGES[key].label}
+              </Link>
+            ))}
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-ink-muted">検知方法</span>
+          <div className="flex overflow-hidden rounded-md border border-line">
+            {(Object.keys(DETECTORS) as Detector[]).map((key) => (
+              <Link
+                key={key}
+                href={href(params, { detector: key })}
+                aria-current={key === detector ? "page" : undefined}
+                className={`px-3 py-1 ${key === detector ? "bg-ink text-page" : "bg-surface text-ink-secondary hover:bg-grid"}`}
+              >
+                {DETECTORS[key]}
               </Link>
             ))}
           </div>
@@ -185,9 +213,7 @@ function AnomalyTable({ data, params }: { data: Dashboard; params: Params }) {
   return (
     <section className="min-w-0 rounded-lg border border-line bg-surface p-4">
       <h2 className="font-semibold">検知した異常</h2>
-      <p className="mb-2 text-sm text-ink-secondary">
-        直前60分の平常時と比べて、件数が大きく外れた「プロセス × 重要度」です。
-      </p>
+      <p className="mb-2 text-sm text-ink-secondary">{DETECTOR_DESCRIPTION[params.detector]}</p>
       {data.anomalies.length === 0 ? (
         <p className="text-sm text-ink-muted">この期間に検知した異常はありません。</p>
       ) : (

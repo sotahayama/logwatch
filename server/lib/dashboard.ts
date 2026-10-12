@@ -1,4 +1,14 @@
 import { prisma } from "@/lib/prisma";
+import type { Detector } from "@/app/generated/prisma/client";
+
+export const DETECTORS: Record<Detector, string> = {
+  pca: "機械学習(PCA)",
+  statistical: "統計的な方法",
+};
+
+export function isDetector(value: unknown): value is Detector {
+  return typeof value === "string" && value in DETECTORS;
+}
 
 export const RANGES = {
   "1h": { minutes: 60, label: "1時間" },
@@ -25,6 +35,7 @@ export async function getDashboard(
   hostId: number,
   range: RangeKey,
   process: string | null,
+  detector: Detector,
   now = new Date(),
 ) {
   const end = Math.floor(now.getTime() / 60_000) * 60_000 + 60_000;
@@ -34,7 +45,7 @@ export async function getDashboard(
   const [byLevel, anomalies, topProcesses, processRows] = await Promise.all([
     prisma.minuteCount.groupBy({ by: ["minute", "level"], where, _sum: { count: true } }),
     prisma.anomaly.findMany({
-      where,
+      where: { ...where, detector },
       orderBy: [{ minute: "desc" }, { score: "desc" }],
       take: 200,
     }),

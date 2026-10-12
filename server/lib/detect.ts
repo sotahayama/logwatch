@@ -35,7 +35,24 @@ export const DETECTION = {
   spikeLevels: ["error", "fault"] as readonly Level[],
   /** 端末全体のログ量が平常時のこの割合を下回る分(スリープ・放置)は、沈黙を判定しない */
   minActivityRatioForSilence: 0.3,
+  /** 平常時の60分ぶんを確保するため、エージェントの停止を見込んで多めに遡る時間 */
+  lookbackMinutes: 120,
 } as const;
+
+export const LOOKBACK_MS = DETECTION.lookbackMinutes * 60_000;
+
+// 本番(受信時)と評価で同じ判定をするための入口。各分について、直前の一定時間の行だけを使って判定する
+export function detectMinutes(targets: Date[], rows: CountRow[]): DetectedAnomaly[] {
+  const sorted = [...rows].sort((a, b) => a.minute.getTime() - b.minute.getTime());
+  return targets.flatMap((target) => {
+    const t = target.getTime();
+    const window = sorted.filter((r) => {
+      const m = r.minute.getTime();
+      return m <= t && m >= t - LOOKBACK_MS;
+    });
+    return detectMinute(target, window);
+  });
+}
 
 function median(sorted: number[]) {
   const mid = Math.floor(sorted.length / 2);
