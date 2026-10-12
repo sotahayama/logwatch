@@ -4,7 +4,7 @@ import { registerHost } from "@/lib/hosts";
 import { prisma } from "@/lib/prisma";
 
 beforeEach(async () => {
-  await prisma.$executeRaw`TRUNCATE "MinuteCount", "Host" RESTART IDENTITY CASCADE`;
+  await prisma.$executeRaw`TRUNCATE "Anomaly", "MinuteCount", "Host" RESTART IDENTITY CASCADE`;
 });
 
 function ingest(body: unknown, token?: string) {
@@ -65,7 +65,7 @@ describe("保存", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ stored: 2 });
+    expect(await res.json()).toEqual({ stored: 2, anomalies: 0 });
     expect(await stored()).toEqual([
       { hostId: host.id, minute: new Date("2026-10-09T09:12:00Z"), process: "WindowServer", level: "notice", count: 42 },
       { hostId: host.id, minute: new Date("2026-10-09T09:12:00Z"), process: "WindowServer", level: "error", count: 3 },
@@ -132,5 +132,27 @@ describe("入力チェック", () => {
     const { token } = await registerHost("mac");
     const res = await ingest({ minute: "2026-10-09T09:12:00Z" }, token);
     expect(res.status).toBe(400);
+  });
+});
+
+describe("受信時の異常検知", () => {
+  const base = Date.parse("2026-10-09T08:00:00Z");
+  const at = (i: number) => new Date(base + i * 60_000).toISOString();
+  const minutes = (n: number, count: number) =>
+    Array.from({ length: n }, (_, i) => sample({ minute: at(i), level: "error", count }));
+
+  it("受信した分で急増を検知して保存し、同じ分を送り直すと検知し直す", async () => {
+    const { host, token } = await registerHost("mac");
+    await ingest({ counts: minutes(40, 100) }, token);
+
+    const spike = await ingest({ counts: [sample({ minute: at(40), level: "error", count: 900 })] }, token);
+    expect(await spike.json()).toEqual({ stored: 1, anomalies: 1 });
+    expect(await prisma.anomaly.findMany({ select: { hostId: true, kind: true, count: true } })).toEqual([
+      { hostId: host.id, kind: "spike", count: 900 },
+    ]);
+
+    // 誤った値だったとして正しい件数で再送されたら、検知結果も消える
+    await ingest({ counts: [sample({ minute: at(40), level: "error", count: 100 })] }, token);
+    expect(await prisma.anomaly.count()).toBe(0);
   });
 });

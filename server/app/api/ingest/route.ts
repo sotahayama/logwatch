@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { findHostByAuthorization } from "@/lib/hosts";
 import { IngestError, parseCounts, storeCounts } from "@/lib/ingest";
+import { detectAndStore } from "@/lib/anomalies";
 
 export async function POST(req: Request) {
   const host = await findHostByAuthorization(req.headers.get("authorization"));
@@ -19,5 +20,6 @@ export async function POST(req: Request) {
   }
 
   await storeCounts(host.id, counts);
-  return NextResponse.json({ stored: counts.length });
+  const anomalies = await detectAndStore(host.id, counts.map((c) => c.minute));
+  return NextResponse.json({ stored: counts.length, anomalies: anomalies.length });
 }
