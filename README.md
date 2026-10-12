@@ -102,6 +102,20 @@ python3 -m venv .venv
 .venv/bin/python -m logwatch_detector.worker
 ```
 
+## 常駐させる(launchd)
+
+サーバー・エージェント・PCA ワーカーを、ログイン時に自動で起動し、落ちたら再起動するよう登録する。PostgreSQL は `brew services` で常駐させておく。
+
+```bash
+LOGWATCH_TOKEN=<端末のトークン> scripts/launchd.sh install
+scripts/launchd.sh status
+scripts/launchd.sh uninstall
+```
+
+- ダッシュボードは http://127.0.0.1:3001 。認証がないため、同じネットワークの他の端末からは見えないよう `127.0.0.1` だけで待ち受ける
+- 設定ファイルは `~/Library/LaunchAgents/com.logwatch.*.plist`。エージェントのトークンを含むので本人だけが読める権限(600)で作る
+- ログは `~/Library/Logs/logwatch/`
+
 ## テスト
 
 ```bash
